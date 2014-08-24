@@ -1,0 +1,134 @@
+---
+title: 'Machine Learning Project - Coursera Data Science'
+author: "pepper416"
+date: "August 23, 2014"
+
+output: html_document
+keep_md: yes
+theme: spacelab
+highlight: kate
+---
+### Executive Summary
+
+This is my final project for the [Johns Hopkins' Coursera course -Data Science specialization "Practical Machine Learning"](https://www.coursera.org/course/predmachlearn). The objective of this project is to predict one of five different fashions of performing the Unilateral Dumbbell Biceps Curl (i.e. the `classe` variable in the training dataset), based on observations from accelerometers on the belt, forearm, arm, and dumbell. The five different fashions are:
+
+- A = Exactly according to the specification
+- B = Throwing the elbows to the front
+- C = Lifting the dumbbell only halfway
+- D = Lowering the dumbbell only halfway
+- E = Throwing the hips to the front
+
+The data are split into a training group (19,622) observations and testing group (20 observations). More information about this dataset is available from the website here: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har) 
+
+It is important to split the training dataset into a training dataset and a cross validation datasets. This is useful to estimate the errors from the model.
+
+In this report, we tried the rpart model and random forest model. Random forest gives us 99% prediction accuracy. We are more confident to use the random forest model to predict the 20 test examples.
+
+The report contains the following sections:
+
+1. Data Preparation
+2. Model Selection
+3. Test Data Prediction
+
+
+### Data Preparation
+
+You need the following packages to run this analysis
+```{r, cache = TRUE}
+library(caret)
+library(rattle)
+
+set.seed(516)
+```
+
+Download the training data from [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+and the test data are available from [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+```{r, cache = TRUE}
+training <- read.csv("pml-training.csv", header = TRUE, na.strings = c("NA", ""))[,-1]
+testing <- read.csv("pml-testing.csv", header = TRUE, na.strings = c("NA", ""))[,-1]
+sum(colSums(is.na(training))==0) #count how many columns don't have NAs in the training dataset 
+sum(colSums(is.na(testing))==0) #count how many columns don't have NAs in the testing dataset
+```
+
+Note that some features are mainly NAs, it won't be helpful for the analysis by keeping these features. Therefore, we will eliminate features that have NAs. There are 60 columns in both the training and testing dataset left after we removed features that have missing values.
+
+```{r, cache = TRUE,  results='hide'}
+training1 <- training[,colSums(is.na(training))==0]
+testing1<- testing[,colSums(is.na(testing))==0]
+```
+
+The following 6 features seem not to be useful in predicting classe, so we will remove those 6 features as well:
+"user_name" "raw_timestamp_part_1" "raw_timestamp_part_2" "cvtd_timestamp" "new_window" "num_window"
+
+```{r, cache = TRUE}
+o = which(names(training1) %in% c("user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window"))
+training_clean <- training1[,-o]
+testing_clean<- testing1[,-o]
+```
+Finally, in the cleaned dataset, there are only 53 columns left.
+
+We will split the cleaned training dataset into training (80%) and validation (20%) datasets. This validation dataset will allow us to perform cross validation for developing and testing our model.
+
+```{r, cache = TRUE}
+inTrain = createDataPartition(training_clean$classe, p = 0.8)[[1]]
+
+train = training_clean[ inTrain,]
+validate = training_clean[-inTrain,]
+dim(train)
+```
+
+
+### Model Selection
+
+In this section we will try different models that we learned from this course and select the best one.
+
+#### Model1: rpart
+
+The first option is the simple decision tree, by using rpart method.
+```{r, cache = TRUE}
+modFit1 <- train(as.factor(classe) ~ ., method='rpart', data=train)
+fancyRpartPlot(modFit1$finalModel)
+
+pred_mod1 = predict(modFit1, newdata = validate)
+confusionMatrix(validate$classe, pred_mod1)
+```
+
+This model can only correctly predict 50.4% of the validation data.
+
+
+#### Model2: Random Forest
+
+We will try the random forest model below
+```{r, cache = TRUE}
+modFit2 <- train(as.factor(classe) ~ ., method='rf', data=train, trControl = trainControl(method = "cv"))
+
+pred_mod2 = predict(modFit2, newdata = validate)
+confusionMatrix(validate$classe, pred_mod2)
+```
+
+The accuracy from the random forest model is 99.6%! 
+
+### Test Data Prediction
+Finally, we can use the random forest model to predict the 20 testing examples. 
+
+```{r}
+answers = predict(modFit2, newdata = testing_clean)
+answers
+```
+
+Write the predicted results as .txt file and upload to the course project submission page.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+  
+pml_write_files(answers)
+```
+
+
